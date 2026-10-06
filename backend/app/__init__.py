@@ -1,0 +1,3 @@
+"""
+Socratica backend application package.
+"""

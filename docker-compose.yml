@@ -1,0 +1,124 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Socratica — Docker Compose (Development)
+#
+# Langflow is provided by: ibm-hacktiv8-langflow/compose.yaml
+# It runs as a separate Docker Compose project on the same host.
+#
+# Two networking options (choose one):
+#
+#   Option A — Run FastAPI directly on the host (simplest for development):
+#     docker compose up db -d
+#     cd backend && uvicorn asgi:app --reload
+#     Set LANGFLOW_BASE_URL=http://localhost:7860 in .env
+#
+#   Option B — Run FastAPI in Docker, share a network with Langflow:
+#     1. Create an external network:  docker network create socratica-net
+#     2. Add that network to ibm-hacktiv8-langflow/compose.yaml (see note below)
+#     3. Set LANGFLOW_BASE_URL=http://langflow:7860 in .env
+#     4. docker compose up -d
+#
+# Usage (Option A — recommended for development):
+#   cp .env.example .env    # fill in required values
+#   docker compose up db -d
+#   cd backend && python -m venv .venv && .venv/bin/pip install -e ".[dev]"
+#   cd backend && .venv/bin/uvicorn asgi:app --reload
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Application Database ─────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: socratica
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_env}
+      POSTGRES_DB: socratica
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U socratica"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - socratica-internal
+
+  # ── FastAPI Backend ───────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL to point to the 'db' service inside Docker network.
+      DATABASE_URL: postgresql+asyncpg://socratica:${POSTGRES_PASSWORD:-changeme_in_env}@db:5432/socratica
+      # For Docker networking (Option B):
+      # Uncomment and set this after joining the shared network with Langflow.
+      # LANGFLOW_BASE_URL: http://langflow:7860
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn asgi:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - socratica-internal
+      # Uncomment for Option B (shared network with Langflow):
+      # - socratica-net
+
+  # ── Langflow ──────────────────────────────────────────────────────────────
+  # Langflow runs as a SEPARATE Docker Compose project:
+  #   ibm-hacktiv8-langflow/compose.yaml
+  #
+  # To integrate via Docker networking (Option B), add the external network
+  # below to ibm-hacktiv8-langflow/compose.yaml:
+  #
+  #   networks:
+  #     socratica-net:
+  #       external: true
+  #
+  # and add "socratica-net" to the langflow service networks there.
+  #
+  # Then create the network:
+  #   docker network create socratica-net
+  #
+  # And set in .env:
+  #   LANGFLOW_BASE_URL=http://langflow:7860
+
+  # ── Vector Database ───────────────────────────────────────────────────────
+  # [DECISION REQUIRED] OD-03 — Choose ONE of the options below.
+
+  # Qdrant vector database
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - socratica-internal
+
+  # Option B: pgvector (extension on the existing PostgreSQL container above)
+  # No separate service needed; add the pgvector extension to the db service
+  # and run: CREATE EXTENSION IF NOT EXISTS vector;
+
+networks:
+  socratica-internal:
+    driver: bridge
+  # Uncomment for Option B (shared network with Langflow container):
+  # socratica-net:
+  #   external: true
+
+volumes:
+  postgres_data:
+  qdrant_data:
