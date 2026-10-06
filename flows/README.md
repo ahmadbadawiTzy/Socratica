@@ -1,75 +1,79 @@
 # Socratica — Langflow Flows (Canonical Architecture)
 
-Direktori ini berisi ekspor JSON flow Langflow kanonikal untuk pipeline Socratica RAG.
+This directory contains the canonical Langflow flow definitions for the Socratica educational RAG pipeline.
 
 ---
 
-## 1. Arsitektur Flow Minimal & Terpadu
+## 1. Streamlined Production Architecture
 
-Arsitektur produksi Socratica dirampingkan menjadi **2 Flow Utama**:
+Socratica operates with **2 Canonical Flows**:
 
-| Flow | File JSON | Flow ID | Deskripsi |
+| Flow Name | Export File | Flow ID | Description |
 |---|---|---|---|
-| **Socratica — All-in-One AI Assistant** | `flows/exports/socratica_unified.json` | `fe99317c-abcc-4e05-85fd-e2d897fcbdf1` | Mengorkestrasi Academic Guardrail, Q&A dengan sitasi, Socratic Tutoring, Evaluator Mode, dan Retrieval Qdrant secara kontekstual dengan Google Gemini. |
-| **Socratica — Document Ingestion** | `flows/exports/socratica_ingestion.json` | `a080844a-76c6-4841-98ea-9e23b817ecb5` | Pipeline pemrosesan berkas (PDF, DOCX, TXT), pemecahan teks (chunking), embedding Gemini, dan penyimpanan vektor ke Qdrant. |
+| **Socratica — All-in-One AI Assistant** | `flows/exports/socratica_unified.json` | `fe99317c-abcc-4e05-85fd-e2d897fcbdf1` | End-to-end pedagogical assistant handling academic guardrails, grounded Q&A with citations, Socratic tutoring, assignment evaluation, and Qdrant vector retrieval powered by Google Gemini. |
+| **Socratica — Document Ingestion** | `flows/exports/socratica_ingestion.json` | `a080844a-76c6-4841-98ea-9e23b817ecb5` | Ingestion pipeline processing course documents (PDF, DOCX, TXT), text chunking, Gemini embeddings (768 dimensions), and persistent vector storage in Qdrant. |
 
-Flow lama yang redundant (`socratica_retrieval_qa.json`, `socratica_socratic.json`, `socratica_assignment_evaluator.json`, `socratica_guardrail.json`) telah digabungkan ke dalam `socratica_unified.json` untuk menyederhanakan arsitektur dan menghindari port handle mismatch.
+Redundant legacy prototype flows (`socratica_retrieval_qa.json`, `socratica_socratic.json`, `socratica_assignment_evaluator.json`, `socratica_guardrail.json`) have been consolidated into `socratica_unified.json` to eliminate port handle mismatches and maintain a clean single source of truth.
 
 ---
 
-## 2. Diagram Pipeline
+## 2. Pipeline Diagrams
 
-### A. Pipeline Ingesti Dokumen (`socratica_ingestion.json`)
+### A. Document Ingestion Pipeline (`socratica_ingestion.json`)
+
 ```
-[File Upload]
-      │
-      ▼
+[Document Upload (File)]
+          │
+          ▼
 [Recursive Character Text Splitter]
-      │
-      ▼
-[Google Gemini Embeddings (models/gemini-embedding-001)]
-      │
-      ▼
+          │
+          ▼
+[Google Gemini Embeddings (models/gemini-embedding-001 - 768 dim)]
+          │
+          ▼
 [Qdrant Document Store (collection: socratica)]
 ```
 
-### B. Pipeline Asisten & Retrieval (`socratica_unified.json`)
+### B. Assistant & Retrieval Pipeline (`socratica_unified.json`)
+
 ```
-[Student Message / Submission]
-      │
-      ├──────────────────────────────┐
-      ▼                              ▼
+[Student Query / Submission]
+          │
+          ├──────────────────────────────┐
+          ▼                              ▼
 [Qdrant Retriever (search_query)]  [Intent & Mode Handler]
-      │                              │
-      ▼                              │
-[Parser & Grounded Context]          │
-      │                              │
-      └──────────────┬───────────────┘
-                     ▼
-       [Socratica Pedagogical Prompt]
-         - Academic Guardrail
-         - Mode Socratic / Q&A / Evaluator
-                     │
-                     ▼
-       [Google Gemini 2.5 Flash Lite]
-                     │
-                     ▼
-               [Chat Output]
+          │                              │
+          ▼                              │
+[Parser & Grounded Context]              │
+          │                              │
+          └──────────────┬───────────────┘
+                         ▼
+           [Socratica Pedagogical Prompt]
+             - Academic Guardrail
+             - Mode: Socratic / Q&A / Evaluator
+                         │
+                         ▼
+           [Google Gemini Flash-Lite LLM]
+                         │
+                         ▼
+                   [Chat Output]
 ```
 
 ---
 
-## 3. Konfigurasi Kredensial & Koleksi
+## 3. Credentials & Vector Store Configuration
 
-1. **Gemini API Key:** Dikelola terpusat di Langflow melalui *Settings $\rightarrow$ Global Variables* (`GOOGLE_API_KEY` / `GEMINI_API_KEY`) atau container environment. File JSON flow tidak mengandung API key mentah (`load_from_db: true`).
-2. **Koleksi Qdrant:** Kedua flow secara konsisten menggunakan koleksi tunggal kanonikal: `socratica` pada host `qdrant:6333` (Docker internal) atau `localhost:6333`.
-3. **Model LLM & Embeddings:**
-   - Embeddings: `models/gemini-embedding-001` (vektor 768 dimensi).
-   - LLM: `gemini-2.5-flash-lite` (respons cepat, bebas 429 quota exhaustion).
+1. **Google Gemini API Key:** Managed centrally in Langflow via *Settings → Global Variables* (`GEMINI_API_KEY` or `GOOGLE_API_KEY`) or container environment variables. Flow JSON files never contain hardcoded plaintext API keys (`load_from_db: true`).
+2. **Qdrant Vector Database:** Both flows connect to the canonical collection `socratica` hosted at `http://qdrant:6333` (Docker network) or `http://localhost:6333` (host).
+3. **Active Models:**
+   - **Embeddings:** `models/gemini-embedding-001` (768-dimensional vectors with cosine distance).
+   - **LLM:** `gemini-flash-lite-latest` (high speed, cost-effective, low latency for interactive tutoring).
 
 ---
 
-## 4. Konfigurasi Environment (`.env`)
+## 4. Environment Variables (`.env`)
+
+Configure the following variables in your root `.env`:
 
 ```env
 LANGFLOW_BASE_URL=http://localhost:7860

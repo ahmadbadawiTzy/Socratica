@@ -19,8 +19,9 @@ ENV/
 
 # ─── Secrets & local config ───────────────────────────────────────────────────
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env*.example
 *.pem
 *.key
 

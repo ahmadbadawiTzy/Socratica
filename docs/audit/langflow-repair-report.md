@@ -77,7 +77,7 @@ Untuk menjalankan model Google Gemini pada tahap produksi maupun pengujian LLM r
    - *Catatan Keamanan:* Jangan pernah membagikan API key melalui chat, repository publik, atau commit Git. File `.env` sudah berada dalam `.gitignore`.
 3. **Restart Container Langflow**:
    ```bash
-   cd /home/ahmadbadawi/Documents/CodinganKu/IBM-hactiv8/ibm-hacktiv8-langflow
+   cd ../ibm-hacktiv8-langflow
    docker compose up -d
    ```
 

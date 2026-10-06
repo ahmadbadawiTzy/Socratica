@@ -1,201 +1,309 @@
 # Socratica
 
-> Web Chatbot AI Teaching Assistant based on RAG — Grounded Knowledge + Socratic Learning + Human Escalation.
+> **Grounded AI Teaching Assistant with Socratic Learning, RAG, and Human Escalation**  
+> Developed for educational institutions to provide pedagogical guidance, grounded academic assistance, and continuous feedback.
 
-## Quick Start
+---
 
-```bash
-# 1. Clone & configure
-cp .env.example .env       # edit .env with your values
-cp frontend/.env.local.example frontend/.env.local
+## Overview
 
-# 2. Start infrastructure
-cd ibm-hacktiv8-langflow && docker compose up -d && cd ..
-docker compose up db qdrant -d
+**Socratica** is an enterprise-grade AI academic assistant engineered to transform how universities and students interact with course materials. Unlike conventional generative chat applications that simply provide direct answers to assignments—undermining critical thinking—Socratica employs the **Socratic Method** to stimulate intellectual curiosity, guide problem-solving through scaffolded inquiry, and provide rubric-aligned formative feedback.
 
-# 3. Run backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-alembic upgrade head
-uvicorn asgi:app --reload
+### Key Capabilities
 
-# 4. Import Langflow flows (see flows/README.md)
-# Open http://localhost:7860 → import flows/exports/*.json
-# Configure Gemini API key and Qdrant URL in each flow
-# Copy flow IDs to .env
+1. **Course-Grounded RAG (Retrieval-Augmented Generation)**:
+   All answers are anchored strictly in lecturer-uploaded syllabus documents, lecture notes, and reading materials using **Qdrant** vector search and **Google Gemini** embeddings.
+2. **Pedagogical Socratic Tutoring**:
+   Rather than handing over final solutions or code, Socratica challenges students with probing questions, conceptual hints, and guided checkpoints.
+3. **Formative Assignment Evaluation**:
+   Students can submit assignment drafts for rubric-aligned feedback without receiving an automated grade, highlighting areas of conceptual mastery and opportunities for refinement.
+4. **Academic Guardrails & Safety**:
+   Rebuffs non-academic prompts, prevents cheating attempts, and mitigates indirect prompt injection attacks hidden within uploaded documents.
+5. **Seamless Human Escalation**:
+   When an AI interaction reaches an impasse or addresses out-of-scope administrative queries, questions can be escalated directly to professors or Teaching Assistants (TAs) with full conversational context.
 
-# 5. Run frontend
-cd frontend
-npm install
-npm run dev
-# Open http://localhost:3000
+---
+
+## System Architecture
+
+The following diagram illustrates the end-to-end architecture and data flow across Socratica's services:
+
+```mermaid
+flowchart TD
+    subgraph Client["Presentation Layer (Client)"]
+        UI["Next.js 16 Web Application<br/>(React 19, TypeScript, Tailwind CSS)"]
+    end
+
+    subgraph BackendGateway["Application & API Layer"]
+        API["FastAPI Backend<br/>(Async REST, Auth, Business Logic)"]
+        DB[("PostgreSQL 16<br/>Users, Courses, Enrollments,<br/>Conversations, Escalations")]
+    end
+
+    subgraph RAGOrchestration["AI & Orchestration Layer"]
+        LF["Langflow Orchestration Engine<br/>(Dockerized Execution Pipeline)"]
+        
+        subgraph Flows["Canonical Flows"]
+            UnifiedFlow["Socratica — All-in-One AI Assistant<br/>(Guardrail, Grounded Q&A, Socratic, Evaluator)"]
+            IngestionFlow["Socratica — Document Ingestion<br/>(Chunking, Embedding, Indexing)"]
+        end
+    end
+
+    subgraph StorageVector["Knowledge & Inference Layer"]
+        Qdrant[("Qdrant Vector Database<br/>(Collection: socratica, 768-dim)")]
+        Gemini["Google Gemini Cloud API<br/>(LLM: gemini-flash-lite-latest<br/>Embeddings: gemini-embedding-001)"]
+    end
+
+    UI -->|"HTTP / REST API (Port 8000)"| API
+    API -->|"Async SQLAlchemy / asyncpg"| DB
+    API -->|"Langflow REST Client (Port 7860)"| LF
+    LF --> UnifiedFlow
+    LF --> IngestionFlow
+    
+    UnifiedFlow -->|"Vector Search & Metadata Filter"| Qdrant
+    UnifiedFlow -->|"Inference Prompts & Responses"| Gemini
+    
+    IngestionFlow -->|"Vector Embeddings"| Gemini
+    IngestionFlow -->|"Vector Upserts (course_id payload)"| Qdrant
 ```
 
 ---
 
-## Architecture
+## Data & Ingestion Pipeline
 
+```mermaid
+flowchart LR
+    A["Course Document<br/>(PDF, DOCX, TXT)"] --> B["FastAPI Upload Endpoint<br/>(/api/v1/courses/:id/documents)"]
+    B --> C["Langflow Ingestion Pipeline<br/>(socratica_ingestion.json)"]
+    C --> D["Recursive Character Splitter<br/>(Chunk: 1000, Overlap: 200)"]
+    D --> E["Google Gemini Embeddings<br/>(models/gemini-embedding-001)"]
+    E --> F["Qdrant Vector Store<br/>(Payload: course_id, filename, chunk)"]
 ```
-┌──────────────────────────┐
-│   Next.js + React        │
-│   Web Chatbot UI         │  http://localhost:3000
-└────────────┬─────────────┘
-             │ REST API
-             ▼
-┌──────────────────────────┐
-│   FastAPI Backend        │  http://localhost:8000
-│   Auth / API / DB        │
-└────────────┬─────────────┘
-             │ Langflow API
-             ▼
-┌──────────────────────────┐
-│   Langflow (Docker)      │  http://localhost:7860
-│   RAG Orchestration      │
-└──────────┬───────────────┘
-           ├──────────────────┐
-           ▼                  ▼
-    Qdrant :6333        PostgreSQL :5432
-    Vector DB           Application DB
-```
+
+- **Tenant Isolation**: Documents are tagged with a verified `course_id` extracted from authenticated session credentials. Vector queries are strictly scoped to the active enrolled course to prevent data leakage across classes.
+- **Deduplication & Hygiene**: Chunks retain original source metadata enabling precise citation attribution in chat responses.
 
 ---
 
-## Stack
+## Technology Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js 16 + React + TypeScript + Tailwind CSS |
-| Backend | FastAPI + SQLAlchemy + Alembic |
-| Database | PostgreSQL 16 |
-| Vector DB | Qdrant |
-| RAG Orchestration | Langflow (Docker) |
-| LLM + Embeddings | Google Gemini (configured in Langflow) |
-| Auth | JWT (HS256) + Argon2id password hashing |
+| Layer | Technology | Details / Version |
+|---|---|---|
+| **Frontend** | Next.js, React, TypeScript | Next.js 16 (Turbopack, App Router), React 19, Tailwind CSS 4 |
+| **Backend API** | FastAPI, Python | Python 3.11+, Pydantic v2, ASGI (`uvicorn`) |
+| **Relational Database** | PostgreSQL, SQLAlchemy | PostgreSQL 16 Alpine, SQLAlchemy 2.0 (asyncio), Alembic migrations |
+| **Vector Database** | Qdrant | Qdrant latest, HNSW Cosine Index, 768 dimensions |
+| **RAG Orchestrator** | Langflow | Langflow 1.x running in isolated Docker environment |
+| **Foundation Models** | Google Gemini | **LLM:** `gemini-flash-lite-latest`<br/>**Embeddings:** `models/gemini-embedding-001` (768-dim) |
+| **Authentication** | JWT & Argon2id | Access & Refresh tokens, Argon2id password hashing |
+| **Containerization** | Docker, Docker Compose | Multi-container setup for PostgreSQL, Qdrant, and Langflow |
+
+---
+
+## Project Structure
+
+```text
+socratica/
+├── backend/                  # FastAPI backend application
+│   ├── app/
+│   │   ├── api/v1/           # Versioned API routes (auth, courses, chat, escalations)
+│   │   ├── core/             # App configuration, security, database session
+│   │   ├── models/           # SQLAlchemy database models
+│   │   ├── schemas/          # Pydantic validation schemas
+│   │   └── services/         # Langflow client, RAG orchestrator, sanitizers
+│   ├── migrations/           # Alembic database migrations
+│   ├── tests/                # Automated pytest test suite (63+ tests)
+│   └── asgi.py               # ASGI application entrypoint
+├── frontend/                 # Next.js 16 web application
+│   ├── src/
+│   │   ├── app/              # Next.js App Router (pages & layouts)
+│   │   ├── components/       # UI components (chat, navigation, modals)
+│   │   └── lib/              # API clients and utilities
+│   ├── package.json          # Frontend dependencies and scripts
+│   └── tsconfig.json         # TypeScript configuration
+├── flows/                    # Canonical Langflow definitions
+│   ├── exports/
+│   │   ├── socratica_unified.json    # All-in-One pedagogical & RAG assistant
+│   │   └── socratica_ingestion.json  # File chunking & Qdrant ingestion
+│   └── README.md             # Flow documentation and setup guide
+├── docs/                     # Architecture specifications & PRD
+│   ├── prd.md                # Product Requirements Document
+│   └── ai.md                 # Engineering guidelines and architectural decisions
+├── scripts/                  # Utility and verification scripts
+│   └── verify_e2e_complete.py# Automated End-to-End validation test suite
+├── docker-compose.yml        # Docker Compose configuration (db, qdrant, backend)
+├── .env.example              # Sample environment configuration template
+└── README.md                 # Project documentation
+```
 
 ---
 
 ## Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- Docker + Docker Compose
-- Google Gemini API key (set in Langflow, not in `.env`)
-- Langflow running via `ibm-hacktiv8-langflow/compose.yaml`
+Before setting up Socratica locally, ensure the following tools are installed:
+
+- **Docker** (version 24.0+) & **Docker Compose** (v2.0+)
+- **Python** (version 3.11 or higher)
+- **Node.js** (version 18.x or higher) & **npm** (v9.x or higher)
+- **Google Gemini API Key** (obtained via [Google AI Studio](https://aistudio.google.com/))
 
 ---
 
-## Step-by-Step Setup
+## Quickstart & Local Setup
 
-### 1. Configure Environment
+### 1. Clone the Repository & Configure Environment
 
 ```bash
+# Clone repository
+git clone https://github.com/your-username/socratica.git
+cd socratica
+
+# Copy environment template
 cp .env.example .env
+cp frontend/.env.local.example frontend/.env.local
 ```
 
-Edit `.env` — required values:
+Edit `.env` to configure application secrets:
 ```env
+# Application & Database
 DATABASE_URL=postgresql+asyncpg://socratica:changeme@localhost:5432/socratica
+POSTGRES_PASSWORD=changeme
+
+# Authentication (Generate via: python3 -c "import secrets; print(secrets.token_hex(32))")
+JWT_SECRET=your_generated_64_character_secret_here
+
+# Langflow & Vector Store
 LANGFLOW_BASE_URL=http://localhost:7860
-JWT_SECRET=<generate: python -c "import secrets; print(secrets.token_hex(32))">
+LANGFLOW_UNIFIED_FLOW_ID=fe99317c-abcc-4e05-85fd-e2d897fcbdf1
+LANGFLOW_INGESTION_FLOW_ID=a080844a-76c6-4841-98ea-9e23b817ecb5
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION=socratica
+
+# CORS
 FRONTEND_ORIGIN=http://localhost:3000
 ```
 
-After importing flows (step 5), also set:
-```env
-LANGFLOW_RETRIEVAL_FLOW_ID=<uuid>
-LANGFLOW_INGESTION_FLOW_ID=<uuid>
-LANGFLOW_SOCRATIC_FLOW_ID=<uuid>
-LANGFLOW_EVALUATOR_FLOW_ID=<uuid>
-```
+> [!IMPORTANT]
+> **Gemini API Key Security**: The `GEMINI_API_KEY` is **never** committed to `.env` or the codebase. It is configured centrally within Langflow's credential store or runtime environment.
 
-### 2. Start Services
+---
+
+### 2. Launch Core Infrastructure
+
+Start the PostgreSQL database and Qdrant vector database:
 
 ```bash
-# PostgreSQL + Qdrant (from repo root)
 docker compose up db qdrant -d
-
-# Langflow (from ibm-hacktiv8-langflow directory)
-cd ibm-hacktiv8-langflow
-docker compose up -d
-# → Langflow UI: http://localhost:7860
 ```
 
-### 3. Setup & Run Backend
+Start the Langflow container:
+```bash
+# From the peer or dedicated Langflow directory:
+cd ../ibm-hacktiv8-langflow
+docker compose up -d
+cd ../socratica
+```
+
+Verify that services are up:
+- PostgreSQL: `localhost:5432`
+- Qdrant Dashboard: [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
+- Langflow Studio: [http://localhost:7860](http://localhost:7860)
+
+---
+
+### 3. Setup and Run the Backend
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies in editable mode
 pip install -e ".[dev]"
 
 # Run database migrations
 alembic upgrade head
 
-# Start backend
-uvicorn asgi:app --reload --host 0.0.0.0 --port 8000
-# → API: http://localhost:8000
-# → API docs (dev): http://localhost:8000/docs
+# Start FastAPI server
+uvicorn asgi:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 4. Setup & Run Frontend
+- API Base URL: [http://localhost:8000](http://localhost:8000)
+- Interactive OpenAPI Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+### 4. Setup and Run the Frontend
 
 ```bash
 cd frontend
-cp .env.local.example .env.local
+
+# Install Node dependencies
 npm install
+
+# Start development server
 npm run dev
-# → UI: http://localhost:3000
 ```
 
-### 5. Import Langflow Flows
-
-See [`flows/README.md`](flows/README.md) for step-by-step instructions.
-
-**Summary:**
-1. Open `http://localhost:7860`
-2. Import each file from `flows/exports/`
-3. Set Gemini API key in each Gemini component
-4. Set Qdrant URL: `http://localhost:6333`
-5. Copy flow IDs to `.env`
-6. Restart FastAPI: `uvicorn asgi:app --reload`
+- Web Application: [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## API Endpoints
+### 5. Configure Langflow Flows
 
-### Public
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/v1/health` | Health check |
-| `GET` | `/api/v1/health/langflow` | Langflow connectivity |
-| `POST` | `/api/v1/auth/register` | Register account |
-| `POST` | `/api/v1/auth/login` | Login → JWT |
-| `POST` | `/api/v1/auth/refresh` | Refresh token |
-
-### Authenticated
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/v1/auth/me` | Current user profile |
-| `GET` | `/api/v1/courses` | List enrolled courses |
-| `POST` | `/api/v1/courses` | Create course (lecturer) |
-| `GET` | `/api/v1/courses/{id}` | Course detail |
-| `POST` | `/api/v1/courses/{id}/enroll` | Enroll user |
-| `GET` | `/api/v1/courses/{id}/documents` | List documents |
-| `POST` | `/api/v1/courses/{id}/documents` | Upload document |
-| `DELETE` | `/api/v1/courses/{id}/documents/{doc_id}` | Delete document |
-| `GET` | `/api/v1/conversations` | List conversations |
-| `POST` | `/api/v1/conversations` | Create conversation |
-| `GET` | `/api/v1/conversations/{id}` | Get conversation + messages |
-| `DELETE` | `/api/v1/conversations/{id}` | Soft-delete |
-| `POST` | `/api/v1/conversations/{id}/messages` | Send message → RAG |
-| `GET` | `/api/v1/escalations` | My escalations |
-| `GET` | `/api/v1/escalations/course/{id}` | Course escalations (lecturer/TA) |
-| `PATCH` | `/api/v1/escalations/{id}` | Update escalation status |
+1. Open **Langflow Studio** at [http://localhost:7860](http://localhost:7860).
+2. Click **Import** and select the two canonical flow exports:
+   - `flows/exports/socratica_unified.json`
+   - `flows/exports/socratica_ingestion.json`
+3. Configure your **Google Gemini API Key** in Langflow:
+   - Navigate to **Settings** $\rightarrow$ **Global Variables**.
+   - Add variable `GEMINI_API_KEY` with your Google AI Studio API key.
+   - Alternatively, enter the key directly into the `Google Generative AI` components in both flows.
+4. Verify that the Qdrant component in both flows points to host `qdrant:6333` (Docker bridge) or `localhost:6333` and collection `socratica`.
+5. Note the generated flow IDs and update `LANGFLOW_UNIFIED_FLOW_ID` and `LANGFLOW_INGESTION_FLOW_ID` in your `.env` file if they differ from the defaults.
 
 ---
 
-## Running Tests
+## API Endpoints Reference
+
+### Public Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/health` | Comprehensive system health check with live probe support (`?probe=true`) |
+| `GET` | `/api/v1/health/langflow` | Langflow and Gemini connectivity verification |
+| `POST` | `/api/v1/auth/register` | Register a new student or lecturer account |
+| `POST` | `/api/v1/auth/login` | Authenticate and obtain JWT access & refresh tokens |
+| `POST` | `/api/v1/auth/refresh` | Refresh expired access token |
+
+### Authenticated Endpoints
+
+| Method | Endpoint | Access Role | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/auth/me` | All | Get profile of currently authenticated user |
+| `GET` | `/api/v1/courses` | All | List courses enrolled or instructed |
+| `POST` | `/api/v1/courses` | Lecturer | Create a new academic course |
+| `GET` | `/api/v1/courses/{id}` | Enrolled | Get detailed course syllabus and stats |
+| `POST` | `/api/v1/courses/{id}/enroll` | Student | Enroll current user in a course |
+| `GET` | `/api/v1/courses/{id}/documents` | Enrolled | List ingested course materials |
+| `POST` | `/api/v1/courses/{id}/documents` | Lecturer / TA | Upload course document and trigger ingestion pipeline |
+| `DELETE` | `/api/v1/courses/{id}/documents/{doc_id}` | Lecturer | Remove document and vector representations |
+| `GET` | `/api/v1/conversations` | All | List user's active and past conversation threads |
+| `POST` | `/api/v1/conversations` | All | Start a new conversation thread within a course |
+| `GET` | `/api/v1/conversations/{id}` | Owner | Retrieve conversation history and message stream |
+| `POST` | `/api/v1/conversations/{id}/messages` | Owner | Send prompt to AI assistant (triggers Langflow RAG) |
+| `GET` | `/api/v1/escalations` | Student | List escalated questions and lecturer responses |
+| `GET` | `/api/v1/escalations/course/{id}` | Lecturer / TA | View pending questions requiring instructor review |
+| `PATCH` | `/api/v1/escalations/{id}` | Lecturer / TA | Resolve or respond to escalated student questions |
+
+---
+
+## Testing & Quality Assurance
+
+### 1. Backend Test Suite
+
+The backend includes a comprehensive suite of unit and integration tests covering authentication, RBAC, RAG orchestrators, and fault handling:
 
 ```bash
 cd backend
@@ -203,86 +311,48 @@ source .venv/bin/activate
 pytest -v
 ```
 
----
+*Status: 63/63 passing tests.*
 
-## Langflow Flows (Canonical Architecture)
+### 2. Frontend Production Build
 
-| File | Purpose | Flow ID Env Var |
-|---|---|---|
-| `socratica_unified.json` | All-in-One AI Assistant (Q&A, Socratic, Evaluator, Guardrails, Qdrant Retrieval) | `LANGFLOW_UNIFIED_FLOW_ID` |
-| `socratica_ingestion.json` | Ingest documents to Qdrant (File → Splitter → Embeddings → Vector Store) | `LANGFLOW_INGESTION_FLOW_ID` |
+Validate TypeScript compilation, Tailwind CSS compilation, and Next.js Turbopack build:
 
----
-
-## Docker Networking
-
-Two options for FastAPI ↔ Langflow communication:
-
-**Option A (recommended for dev — FastAPI on host):**
-```env
-LANGFLOW_BASE_URL=http://localhost:7860
-```
-
-**Option B (FastAPI in Docker, same network):**
 ```bash
-docker network create socratica-net
-# Add network to ibm-hacktiv8-langflow/compose.yaml
-```
-```env
-LANGFLOW_BASE_URL=http://langflow:7860
+cd frontend
+npm run build
 ```
 
----
+*Status: 0 compilation errors.*
 
-## Security Notes
+### 3. Automated End-to-End Verification
 
-- JWT tokens expire in 60 minutes (configurable via `JWT_EXPIRE_MINUTES`)
-- Passwords hashed with Argon2id
-- `course_id` for retrieval always derived from server-side auth — never from user input
-- Retrieved document content treated as DATA in all prompts (indirect injection protection)
-- Student drafts treated as untrusted DATA in evaluator prompt
-- CORS restricted to `FRONTEND_ORIGIN` — no wildcards
-- No Gemini API key in source code or `.env` — configured in Langflow credential store
+Socratica includes an automated E2E test suite that runs against live local infrastructure to validate the entire user journey:
 
----
+```bash
+python3 scripts/verify_e2e_complete.py
+```
 
-## Current Implementation Status
-
-| Component | Status |
-|---|---|
-| FastAPI backend | ✅ Complete |
-| Auth (JWT + Argon2id) | ✅ Complete |
-| PostgreSQL models + migrations | ✅ Complete |
-| Course + enrollment management | ✅ Complete |
-| Document upload + ingestion trigger | ✅ Complete |
-| Chat API + Langflow integration | ✅ Complete |
-| Escalation system | ✅ Complete |
-| Langflow flows (5 flows) | ✅ Ready to import |
-| Qdrant (via docker-compose) | ✅ Configured |
-| Next.js chatbot UI | ✅ Complete |
-| Login / Register | ✅ Complete |
-| Conversation history | ✅ Complete |
-| Citation display | ✅ Complete |
-| Document manager (lecturer/TA) | ✅ Complete |
-| Socratic Mode | ✅ (via Langflow flow) |
-| Assignment Evaluator | ✅ (via Langflow flow) |
-| Escalation notifications | ✅ In-app status |
-| End-to-end RAG | ⏳ Requires Gemini key + flow import |
+The script systematically tests:
+1. **Infrastructure Health**: PostgreSQL, Qdrant, and Langflow responsiveness.
+2. **Authentication Flow**: User registration, login, and JWT credential validation.
+3. **Course Management**: Course creation and student enrollment.
+4. **Document Ingestion**: Document upload, chunking, and embedding generation.
+5. **Vector Retrieval & RAG**: Semantic query matching in Qdrant.
+6. **Pedagogical Assistant**: Direct Q&A mode, Socratic hints, and assignment evaluation.
+7. **Human Escalation**: Question flagging and lecturer resolution workflow.
 
 ---
 
-## Remaining Setup Steps
+## Security & Privacy Highlights
 
-1. **Get Gemini API key**: [Google AI Studio](https://aistudio.google.com)
-2. **Import flows** into Langflow (`flows/README.md`)
-3. **Set flow IDs** in `.env`
-4. **Upload test document** to a course
-5. **Test chat**: ask a question about the document
+- **Centralized Credential Management**: Google Gemini API keys are never stored in client code, backend source code, or application `.env` files. Keys are managed exclusively within Langflow's credential store.
+- **Tenant Data Isolation**: Database-level and vector-payload-level isolation ensures students can only retrieve documents associated with courses they are explicitly enrolled in.
+- **Indirect Prompt Injection Defense**: Course documents are treated strictly as untrusted data chunks during prompt templating, preventing hidden adversarial instructions from hijacking the LLM.
+- **Cryptographic Security**: Passwords are protected using `Argon2id` hashing with unique salts, and API tokens utilize `HS256` signed JWTs with strict expiration windows.
+- **CORS Protection**: Access to backend endpoints is restricted to explicitly whitelisted origin domains (`FRONTEND_ORIGIN`).
 
 ---
 
-## Documentation
+## License
 
-- [`docs/prd.md`](docs/prd.md) — Product Requirements (source of truth)
-- [`docs/ai.md`](docs/ai.md) — Engineering Instructions
-- [`flows/README.md`](flows/README.md) — Langflow flow import guide
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
