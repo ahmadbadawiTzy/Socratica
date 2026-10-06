@@ -977,7 +977,7 @@
             "template": {
               "_type": "Component",
               "api_key": {
-                "load_from_db": false,
+                "load_from_db": true,
                 "override_skip": false,
                 "required": false,
                 "placeholder": "",
