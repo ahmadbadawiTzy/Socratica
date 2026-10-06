@@ -20,9 +20,10 @@ async def test_health_response_schema(client: AsyncClient) -> None:
     """Health response must contain 'status' and 'service' fields."""
     response = await client.get("/api/v1/health")
     body = response.json()
-    assert "status" in body
+    assert body["status"] in ("connected", "ok", "degraded")
     assert "service" in body
-    assert isinstance(body["status"], str)
+    assert "langflow" in body
+    assert "gemini" in body
     assert isinstance(body["service"], str)
     assert body["service"] != ""
 

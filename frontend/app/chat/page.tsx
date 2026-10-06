@@ -11,12 +11,14 @@ import {
   Conversation,
   Message,
   SendMessageResponse,
+  HealthResponse,
 } from "@/lib/api";
 import Sidebar from "@/components/chat/Sidebar";
 import Composer from "@/components/chat/Composer";
 import MessageItem, { ThinkingBubble } from "@/components/chat/MessageItem";
 import DocumentManager from "@/components/chat/DocumentManager";
 import EmptyState from "@/components/chat/EmptyState";
+import ServiceStatusBadge from "@/components/chat/ServiceStatusBadge";
 import ThemeToggle from "@/components/layout/ThemeToggle";
 import { Menu, BookOpen } from "@/components/ui/Icons";
 
@@ -34,6 +36,33 @@ export default function ChatPage() {
   const [showDocs, setShowDocs] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const checkHealth = useCallback((probe = false) => {
+    api.health
+      .check(probe)
+      .then(setHealth)
+      .catch(() => {
+        setHealth({
+          status: "not_connected",
+          service: "Socratica",
+          langflow: { status: "not_connected" },
+          gemini: { status: "unknown" },
+          error: {
+            code: "NOT_CONNECTED",
+            message: "Langflow atau backend service tidak dapat diakses.",
+          },
+        });
+      });
+  }, []);
+
+  // Poll health status regularly
+  useEffect(() => {
+    checkHealth(false);
+    const interval = setInterval(() => checkHealth(false), 20000);
+    return () => clearInterval(interval);
+  }, [checkHealth]);
 
   // Redirect if not logged in
   useEffect(() => {
@@ -255,6 +284,7 @@ export default function ChatPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <ServiceStatusBadge health={health} onRefresh={() => checkHealth(true)} />
             {selectedCourse && canManageDocs && (
               <button
                 type="button"
@@ -269,6 +299,49 @@ export default function ChatPage() {
             <ThemeToggle />
           </div>
         </header>
+
+        {/* Service Status Notification Banner (Condition-specific) */}
+        {health && health.status !== "connected" && health.gemini.status !== "unknown" && (
+          <div className="shrink-0 border-b border-border bg-bg px-4 py-2.5">
+            <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+              <div className="text-xs">
+                <span className="font-semibold">
+                  {health.langflow.status === "not_connected"
+                    ? "● AI Service Not Connected: "
+                    : health.gemini.status === "quota_exceeded"
+                    ? "● AI Service Quota Exceeded: "
+                    : health.gemini.status === "authentication_error"
+                    ? "● AI Authentication Error: "
+                    : health.gemini.status === "connection_timeout" ||
+                      health.langflow.status === "connection_timeout"
+                    ? "● Connection Timeout: "
+                    : health.gemini.status === "rate_limited"
+                    ? "● Rate Limited: "
+                    : "● Service Error: "}
+                </span>
+                <span className="text-muted">
+                  {health.error?.message ||
+                    (health.langflow.status === "not_connected"
+                      ? "Langflow tidak dapat diakses."
+                      : health.gemini.status === "quota_exceeded"
+                      ? "Gemini API quota telah habis. Silakan gunakan kembali setelah quota tersedia atau konfigurasi credential Gemini yang valid."
+                      : health.gemini.status === "authentication_error"
+                      ? "Credential Gemini tidak valid atau ditolak."
+                      : health.gemini.status === "rate_limited"
+                      ? "Batas laju permintaan Gemini telah tercapai."
+                      : "Service membutuhkan waktu terlalu lama untuk merespons.")}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => checkHealth(true)}
+                className="btn btn-ghost shrink-0 px-2 py-0.5 text-[11px]"
+              >
+                Cek Ulang
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Message Viewport */}
         <main className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-6">

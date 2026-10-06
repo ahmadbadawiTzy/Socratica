@@ -48,9 +48,15 @@ class LangflowResponseError(LangflowError):
     forwarded to the client as-is (to avoid leaking internal details).
     """
 
-    def __init__(self, status_code: int) -> None:
+    def __init__(self, status_code: int, detail: str = "") -> None:
         self.status_code = status_code
-        super().__init__(f"Langflow returned HTTP {status_code}")
+        self.detail = detail
+        msg = (
+            f"Langflow returned HTTP {status_code}: {detail}"
+            if detail
+            else f"Langflow returned HTTP {status_code}"
+        )
+        super().__init__(msg)
 
 
 class LangflowFlowNotFoundError(LangflowError):

@@ -114,7 +114,17 @@ Ketentuan Keterlambatan: Pengurangan 10% per hari keterlambatan."""
     reply = msg_res.json()
     assert reply["conversation_id"] == conv_id
     assert "content" in reply
-    assert reply["status"] in ("answered", "insufficient_context", "error")
+    assert reply["status"] in (
+        "answered",
+        "insufficient_context",
+        "error",
+        "quota_exceeded",
+        "rate_limited",
+        "service_error",
+        "authentication_error",
+        "not_connected",
+        "connection_timeout",
+    )
 
     # 9. Verify conversation and messages are stored in DB
     get_conv_res = await client.get(f"/api/v1/conversations/{conv_id}", headers=stu_auth)
@@ -122,8 +132,8 @@ Ketentuan Keterlambatan: Pengurangan 10% per hari keterlambatan."""
     conv_data = get_conv_res.json()
     assert len(conv_data["messages"]) >= 2  # user message + assistant reply
 
-    # 10. Check Escalation: if status was insufficient_context or error, escalation must exist
-    if reply["status"] in ("insufficient_context", "error"):
+    # 10. Check Escalation: if status was an error or insufficient_context, escalation must exist
+    if reply["status"] != "answered":
         assert reply["escalation_id"] is not None
         esc_id = reply["escalation_id"]
 

@@ -104,6 +104,11 @@ export const api = {
       request<SendMessageResponse>("POST", `/api/v1/conversations/${conversationId}/messages`, { content, mode }),
   },
 
+  // ── Health ───────────────────────────────────────────────────────────────
+  health: {
+    check: (probe = false) =>
+      request<HealthResponse>("GET", `/api/v1/health${probe ? "?probe=true" : ""}`),
+  },
 
   // ── Escalations ───────────────────────────────────────────────────────────
   escalations: {
@@ -113,7 +118,20 @@ export const api = {
   },
 };
 
+export interface ServiceComponentStatus {
+  status: string;
+}
 
+export interface HealthResponse {
+  status: string;
+  service: string;
+  langflow: ServiceComponentStatus;
+  gemini: ServiceComponentStatus;
+  error?: {
+    code: string;
+    message: string;
+  } | null;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -176,6 +194,8 @@ export interface SendMessageResponse {
   citations: Citation[];
   mode: string;
   status: string;
+  error_code?: string | null;
+  error_message?: string | null;
   escalation_id: string | null;
 }
 
