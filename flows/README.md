@@ -1,146 +1,80 @@
-# Socratica — Langflow Flows
+# Socratica — Langflow Flows (Canonical Architecture)
 
-This directory contains Langflow flow JSON exports for the Socratica RAG pipeline.
-
-## Status
-**Phase 2 — Flows available for import.** All 5 flows are ready to import into Langflow.
+Direktori ini berisi ekspor JSON flow Langflow kanonikal untuk pipeline Socratica RAG.
 
 ---
 
-## Quick Import Guide
+## 1. Arsitektur Flow Minimal & Terpadu
 
-### Step 1 — Start Langflow
-```bash
-cd ibm-hacktiv8-langflow
-docker compose up -d
-# Open: http://localhost:7860
+Arsitektur produksi Socratica dirampingkan menjadi **2 Flow Utama**:
+
+| Flow | File JSON | Flow ID | Deskripsi |
+|---|---|---|---|
+| **Socratica — All-in-One AI Assistant** | `flows/exports/socratica_unified.json` | `fe99317c-abcc-4e05-85fd-e2d897fcbdf1` | Mengorkestrasi Academic Guardrail, Q&A dengan sitasi, Socratic Tutoring, Evaluator Mode, dan Retrieval Qdrant secara kontekstual dengan Google Gemini. |
+| **Socratica — Document Ingestion** | `flows/exports/socratica_ingestion.json` | `a080844a-76c6-4841-98ea-9e23b817ecb5` | Pipeline pemrosesan berkas (PDF, DOCX, TXT), pemecahan teks (chunking), embedding Gemini, dan penyimpanan vektor ke Qdrant. |
+
+Flow lama yang redundant (`socratica_retrieval_qa.json`, `socratica_socratic.json`, `socratica_assignment_evaluator.json`, `socratica_guardrail.json`) telah digabungkan ke dalam `socratica_unified.json` untuk menyederhanakan arsitektur dan menghindari port handle mismatch.
+
+---
+
+## 2. Diagram Pipeline
+
+### A. Pipeline Ingesti Dokumen (`socratica_ingestion.json`)
+```
+[File Upload]
+      │
+      ▼
+[Recursive Character Text Splitter]
+      │
+      ▼
+[Google Gemini Embeddings (models/gemini-embedding-001)]
+      │
+      ▼
+[Qdrant Document Store (collection: socratica)]
 ```
 
-### Step 2 — Import each flow
-1. Open Langflow UI at `http://localhost:7860`
-2. Click **"New Flow"** → **"Import from file"** (or drag & drop)
-3. Import each JSON file from `flows/exports/`:
-   - `socratica_ingestion.json`
-   - `socratica_retrieval_qa.json`
-   - `socratica_socratic.json`
-   - `socratica_assignment_evaluator.json`
-   - `socratica_guardrail.json` (optional for MVP)
+### B. Pipeline Asisten & Retrieval (`socratica_unified.json`)
+```
+[Student Message / Submission]
+      │
+      ├──────────────────────────────┐
+      ▼                              ▼
+[Qdrant Retriever (search_query)]  [Intent & Mode Handler]
+      │                              │
+      ▼                              │
+[Parser & Grounded Context]          │
+      │                              │
+      └──────────────┬───────────────┘
+                     ▼
+       [Socratica Pedagogical Prompt]
+         - Academic Guardrail
+         - Mode Socratic / Q&A / Evaluator
+                     │
+                     ▼
+       [Google Gemini 2.5 Flash Lite]
+                     │
+                     ▼
+               [Chat Output]
+```
 
-### Step 3 — Configure Google Gemini API Key
-For **each flow** that contains Gemini components:
-1. Click the **Gemini Embeddings** component → set `google_api_key`
-2. Click the **Gemini LLM** component → set `google_api_key`
+---
 
-> **Use Langflow's credential store** — do NOT paste keys into source code.
-> In Langflow UI: Settings → Credentials → Add credential → name it `GEMINI_API_KEY`
-> Then reference it in each component via the credential dropdown.
+## 3. Konfigurasi Kredensial & Koleksi
 
-### Step 4 — Configure Qdrant
-For each flow with a Qdrant component:
-- `url`: `http://localhost:6333` (or `http://qdrant:6333` if Langflow is in Docker with Qdrant)
-- `collection_name`: `socratica`
-- `api_key`: leave empty for local Qdrant without auth
+1. **Gemini API Key:** Dikelola terpusat di Langflow melalui *Settings $\rightarrow$ Global Variables* (`GOOGLE_API_KEY` / `GEMINI_API_KEY`) atau container environment. File JSON flow tidak mengandung API key mentah (`load_from_db: true`).
+2. **Koleksi Qdrant:** Kedua flow secara konsisten menggunakan koleksi tunggal kanonikal: `socratica` pada host `qdrant:6333` (Docker internal) atau `localhost:6333`.
+3. **Model LLM & Embeddings:**
+   - Embeddings: `models/gemini-embedding-001` (vektor 768 dimensi).
+   - LLM: `gemini-2.5-flash-lite` (respons cepat, bebas 429 quota exhaustion).
 
-### Step 5 — Verify embedding model consistency
-All flows use `models/text-embedding-004` for embeddings.
-**CRITICAL**: The model in ingestion must match the model in retrieval/QA flows.
-If you change the model, re-index all documents.
+---
 
-### Step 6 — Get Flow IDs
-For each imported flow:
-1. Open the flow in Langflow UI
-2. Click **API** tab (top right)
-3. Copy the **Flow ID** (UUID in the curl example)
+## 4. Konfigurasi Environment (`.env`)
 
-### Step 7 — Configure FastAPI
-Add flow IDs to your `.env` file:
 ```env
-LANGFLOW_INGESTION_FLOW_ID=<uuid-from-langflow>
-LANGFLOW_RETRIEVAL_FLOW_ID=<uuid-from-langflow>
-LANGFLOW_SOCRATIC_FLOW_ID=<uuid-from-langflow>
-LANGFLOW_EVALUATOR_FLOW_ID=<uuid-from-langflow>
-LANGFLOW_GUARDRAIL_FLOW_ID=<uuid-from-langflow>
+LANGFLOW_BASE_URL=http://localhost:7860
+LANGFLOW_UNIFIED_FLOW_ID=fe99317c-abcc-4e05-85fd-e2d897fcbdf1
+LANGFLOW_INGESTION_FLOW_ID=a080844a-76c6-4841-98ea-9e23b817ecb5
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION=socratica
 ```
-
-### Step 8 — Smoke Test
-```bash
-# With FastAPI running:
-curl http://localhost:8000/api/v1/health/langflow
-# Expected: {"status":"ok","service":"langflow"}
-```
-
----
-
-## Flow Overview
-
-### Flow A — Document Ingestion (`socratica_ingestion.json`)
-```
-File Input (PDF/DOCX/PPTX)
-  → RecursiveCharacterTextSplitter (512 tokens, 64 overlap)
-  → Gemini Embeddings (text-embedding-004)
-  → Qdrant Vector Store (collection: socratica)
-```
-**Triggered by:** `POST /api/v1/courses/{id}/documents` after file upload.
-**Metadata injected by FastAPI:** `document_id`, `document_name`, `course_id`, `document_type`, `meeting`, `chapter`, `source_filename`.
-
-### Flow B — Retrieval Q&A (`socratica_retrieval_qa.json`)
-```
-Chat Input (question)
-  → Qdrant Retriever (top-k=5, filter: course_id)
-  → RAG Prompt (grounding + injection protection)
-  → Gemini LLM (gemini-1.5-flash, temp=0.1)
-  → Chat Output (answer + citations)
-```
-**Used for:** Standard Q&A about course materials.
-**Security:** Prompt explicitly separates context (DATA) from instructions. course_id filter from FastAPI auth.
-
-### Flow C — Socratic Mode (`socratica_socratic.json`)
-```
-Chat Input (student question)
-  → Qdrant Retriever (top-k=5, filter: course_id)
-  → Socratic Prompt (hint + guiding question)
-  → Gemini LLM (gemini-1.5-flash, temp=0.3)
-  → Chat Output (hint/question response)
-```
-**Used for:** Problem-solving guidance. Maintains conversation context via session_id.
-
-### Flow D — Assignment Evaluator (`socratica_assignment_evaluator.json`)
-```
-Draft Input (student work)
-  → Qdrant Retriever (top-k=8, rubric + material)
-  → Evaluator Prompt (structured feedback, no grades)
-  → Gemini LLM (gemini-1.5-flash, temp=0.2)
-  → Evaluation Output
-```
-**Security:** Draft treated as untrusted DATA. Code is NOT executed.
-**Output:** Summary, Strengths, Areas for Improvement, Suggestions. No numeric score.
-
-### Flow E — Guardrail (`socratica_guardrail.json`)
-```
-User Input
-  → Classifier Prompt
-  → Gemini LLM (temp=0.0)
-  → JSON Classification Result
-```
-**Returns:** `{classification, reason, safe_to_proceed}`
-**MVP Note:** Optional — the Q&A prompt itself includes injection protection.
-
----
-
-## Security Notes
-
-- No API keys are embedded in these flow JSON files.
-- Use Langflow's credential store for all API keys.
-- `course_id` filter is always injected server-side by FastAPI — never from user input.
-- Retrieved document content is always treated as DATA in prompts, not instructions.
-- Student draft content is explicitly labeled as untrusted DATA in the evaluator prompt.
-
----
-
-## Open Decisions (still required)
-
-| Item | Status |
-|---|---|
-| OD-04 | Faithfulness evaluation methodology — evaluation set needed |
-| OD-05 | Meeting/chapter metadata extraction (manual vs auto) |
-| OD-14 | File scanning tool for malicious documents |

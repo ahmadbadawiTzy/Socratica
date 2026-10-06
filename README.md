@@ -205,15 +205,12 @@ pytest -v
 
 ---
 
-## Langflow Flows
+## Langflow Flows (Canonical Architecture)
 
 | File | Purpose | Flow ID Env Var |
 |---|---|---|
-| `socratica_ingestion.json` | Ingest documents to Qdrant | `LANGFLOW_INGESTION_FLOW_ID` |
-| `socratica_retrieval_qa.json` | Q&A with RAG + citations | `LANGFLOW_RETRIEVAL_FLOW_ID` |
-| `socratica_socratic.json` | Socratic learning mode | `LANGFLOW_SOCRATIC_FLOW_ID` |
-| `socratica_assignment_evaluator.json` | Evaluate student drafts | `LANGFLOW_EVALUATOR_FLOW_ID` |
-| `socratica_guardrail.json` | Input safety classifier (optional) | `LANGFLOW_GUARDRAIL_FLOW_ID` |
+| `socratica_unified.json` | All-in-One AI Assistant (Q&A, Socratic, Evaluator, Guardrails, Qdrant Retrieval) | `LANGFLOW_UNIFIED_FLOW_ID` |
+| `socratica_ingestion.json` | Ingest documents to Qdrant (File → Splitter → Embeddings → Vector Store) | `LANGFLOW_INGESTION_FLOW_ID` |
 
 ---
 
