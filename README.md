@@ -512,10 +512,7 @@ The following enhancements are planned for post-hackathon iterations:
 Socratica was created to address the critical challenge of superficial learning in the era of generative AI. By re-centering the educational experience around guided inquiry, pedagogical scaffolding, and grounded course materials, Socratica demonstrates how AI can empower educators and cultivate independent thinkers.
 
 ### Demonstration & Submission Artifacts
-- **Repository**: [https://github.com/your-username/socratica](https://github.com/your-username/socratica) *(Update with your repository URL)*
-- **Demo Video Walkthrough**: *Pending upload / Hackathon presentation*
-- **Live Deployment URL**: *Pending deployment*
-- **Presentation Deck**: *Available upon request / Hackathon portal*
+- **Repository**: [https://github.com/ahmadbadawiTzy/Socratica](https://github.com/ahmadbadawiTzy/Socratica)
 
 ---
 
