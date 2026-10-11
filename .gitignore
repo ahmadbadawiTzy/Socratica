@@ -68,3 +68,8 @@ node_modules/
 out/
 *.tsbuildinfo
 
+# ─── Internal Development Documentation ───────────────────────────────────────
+/docs/ai.md
+
+
+
